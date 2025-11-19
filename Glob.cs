@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
+using System.Runtime.InteropServices; //OS detection
 using System.Text;
 using System.Text.RegularExpressions;
 
