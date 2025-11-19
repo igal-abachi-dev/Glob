@@ -88,3 +88,7 @@ The `**` pattern matches **directories**.
 *   To find **all files** recursively, use: `**/*`
 *   To find **specific extensions** recursively, use: `**/*.cs`
 *   To find **directories** recursively, use: `**` (with `IncludeDirectories = true` implicitly or explicitly depending on context).
+
+## additional usage: ai chat context
+
+when asking file io questions and code , for correctness of edge cases as glob handles most of the elusive ones
