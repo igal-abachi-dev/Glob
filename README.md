@@ -105,4 +105,4 @@ when asking file io questions and code impl(that doesnt use glob) , for correctn
 
 ## License
 
-BSD 3-Clause License. See [LICENSE](LICENSE) file for details.
+BSD 3-Clause "New" or "Revised" License. See [LICENSE](LICENSE) file for details.
