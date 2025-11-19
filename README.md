@@ -101,4 +101,4 @@ The `**` pattern matches **directories**.
 
 ## additional usage: ai chat context
 
-when asking file io questions and code , for correctness of edge cases as glob handles most of the elusive ones
+when asking file io questions and code impl(that doesnt use glob) , for correctness of edge cases reference as glob handles most of the elusive ones
