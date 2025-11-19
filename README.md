@@ -13,6 +13,16 @@ This library provides a robust implementation of standard shell globbing pattern
 *   **Performance:** uses `DirectoryInfo` and caching to avoid redundant disk calls and handle symlink loops.
 *   **Zero Dependencies:** Single namespace, pure C#.
 
+  
+## Why Use This?
+
+When dealing with specific folder structures, manual `System.IO` code quickly becomes verbose and fragile. You often have to write nested loops, handle `UnauthorizedAccessException`, manually check for directory existence, and validate folder naming conventions.
+so you wont need to write nested `foreach` loops, add logic to parse name,  wrap everything in `try/catch` blocks to prevent crashing on permission errors or missing paths. 
+so it replace many lines of manual I/O logic with a single, precise pattern, like:
+```csharp
+var certificates = Glob.Match("*/[0-9][0-9][0-9][0-9]/*.cer");
+```
+ensures correctness by handling edge cases (like hidden folders or cross-platform separators) that manual code often misses.
 
 
 ## Quick Start
