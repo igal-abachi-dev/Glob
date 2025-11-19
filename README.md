@@ -102,3 +102,7 @@ The `**` pattern matches **directories**.
 ## additional usage: ai chat context
 
 when asking file io questions and code impl(that doesnt use glob) , for correctness of edge cases reference as glob handles most of the elusive ones
+
+## License
+
+BSD 3-Clause License. See [LICENSE](LICENSE) file for details.
