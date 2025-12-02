@@ -39,28 +39,45 @@ namespace Globbing
                 
                 // 2. Determine the actual absolute directory to start walking from
                 string walkRoot;
+                string osPatternBase = PathUtils.ToOsPath(patternBase);
+
                 if (string.IsNullOrEmpty(patternBase) || patternBase == ".")
                 {
                     walkRoot = options.BaseDirectory;
                 }
+                else if (Path.IsPathRooted(osPatternBase))
+                {
+                    // If the pattern itself is absolute (e.g. "C:/Users/*.txt" or "/var/*.log")
+                    walkRoot = PathUtils.TryGetRealPath(osPatternBase);
+                }
                 else
                 {
                     // Combine BaseDirectory with the pattern's prefix
-                    string combined = Path.Combine(options.BaseDirectory, PathUtils.ToOsPath(patternBase));
+                    string combined = Path.Combine(options.BaseDirectory, osPatternBase);
                     walkRoot = PathUtils.TryGetRealPath(combined);
                 }
 
                 // 3. Calculate the pattern relative to the patternBase
                 // e.g. if Pattern="src/*.cs", PatternBase="src", RelativePattern="*.cs"
                 string relativePattern = normalizedPat;
-                if (patternBase.Length > 0 && patternBase != ".")
+                if (!string.IsNullOrEmpty(patternBase) && patternBase != ".")
                 {
-                    if (normalizedPat.StartsWith(patternBase, StringComparison.Ordinal))
+                    var comparison = options.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+                    
+                    // Check exact match
+                    if (normalizedPat.StartsWith(patternBase, comparison))
                     {
                         relativePattern = normalizedPat.Substring(patternBase.Length);
-                        if (relativePattern.StartsWith('/'))
-                            relativePattern = relativePattern.Substring(1);
                     }
+                    // Check with trailing slash (e.g. patternBase="src", normalized="src/foo")
+                    else if (normalizedPat.StartsWith(patternBase + "/", comparison))
+                    {
+                        relativePattern = normalizedPat.Substring(patternBase.Length);
+                    }
+
+                    // Trim leading slash
+                    if (relativePattern.StartsWith('/'))
+                        relativePattern = relativePattern.Substring(1);
                 }
 
                 var ignoreFilter = new IgnoreFilter(
@@ -72,10 +89,7 @@ namespace Globbing
 
                 foreach (var f in walker.Execute(originalHasSep))
                 {
-                    if (options.Realpath)
-                        yield return PathUtils.TryGetRealPath(f);
-                    else
-                        yield return PathUtils.ToOsPath(f);
+                    yield return f;
                 }
             }
         }
@@ -93,6 +107,11 @@ namespace Globbing
         public bool Realpath { get; set; } = false;
         public bool Dot { get; set; } = false;
         public bool MatchBase { get; set; } = false;
+        /// <summary>
+        /// If true, exceptions (like UnauthorizedAccessException) will be thrown. 
+        /// If false (default), they are ignored and the directory is skipped.
+        /// </summary>
+        public bool ThrowOnError { get; set; } = false;
     }
 
     internal static class PathUtils
@@ -112,6 +131,22 @@ namespace Globbing
         // Returns the non-magic directory portion of a glob pattern.
         public static string GetPatternDirectory(string pattern)
         {
+            // Check for UNC paths on Windows (e.g. //server/share/foo*.txt)
+            if (IsUncPath(pattern))
+            {
+                // Find the end of the share name
+                int shareEnd = pattern.IndexOf('/', 2); 
+                if (shareEnd > -1)
+                {
+                    int pathStart = pattern.IndexOf('/', shareEnd + 1);
+                    if (pathStart == -1) return pattern; // The whole thing is the root
+                    
+                    // Check for magic in the unc root? unlikely but strict check:
+                    string root = pattern.Substring(0, pathStart);
+                    if (!HasMagic(root)) return root;
+                }
+            }
+
             int len = pattern.Length;
             int firstMagic = -1;
 
@@ -128,8 +163,9 @@ namespace Globbing
 
             if (firstMagic == -1)
             {
+                // No magic, check if it's a file or dir path
                 int lastSlash = pattern.LastIndexOf('/');
-                if (lastSlash == -1) return IsDriveRelative(pattern) ? pattern.Substring(0, 2) : "";
+                if (lastSlash == -1) return IsDriveRelative(pattern) ? FixDriveRoot(pattern.Substring(0, 2)) : "";
                 if (lastSlash == 0) return "/";
                 return FixDriveRoot(pattern.Substring(0, lastSlash));
             }
@@ -137,10 +173,23 @@ namespace Globbing
             if (firstMagic == 0) return "";
 
             int cutIndex = pattern.LastIndexOf('/', firstMagic - 1);
-            if (cutIndex == -1) return IsDriveRelative(pattern) ? pattern.Substring(0, 2) : "";
+            if (cutIndex == -1) return IsDriveRelative(pattern) ? FixDriveRoot(pattern.Substring(0, 2)) : "";
             if (cutIndex == 0) return "/";
 
             return FixDriveRoot(pattern.Substring(0, cutIndex));
+        }
+
+        private static bool HasMagic(string txt)
+        {
+            return txt.IndexOfAny(new[] { '*', '?', '[', '{' }) > -1;
+        }
+
+        private static bool IsUncPath(string path)
+        {
+            return RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                   && path.Length >= 2
+                   && path[0] == '/'
+                   && path[1] == '/';
         }
 
         private static bool IsDriveRelative(string path)
@@ -169,7 +218,9 @@ namespace Globbing
 
         public static bool IsSymlink(FileSystemInfo info)
         {
-            return info.LinkTarget != null || (info.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint;
+            if (info.LinkTarget != null) return true;
+            // Fallback for older frameworks or specific reparse points
+            return (info.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint;
         }
     }
 
@@ -206,7 +257,8 @@ namespace Globbing
 
         public IEnumerable<string> Execute(bool originalHasSep)
         {
-            // Deduplicate results.
+            // Deduplicate results based on the final output format (OS Path or RealPath).
+            // This prevents casing differences on Windows from returning duplicates.
             var dedup = new HashSet<string>(_options.CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase);
 
             foreach (var pattern in _patterns)
@@ -216,7 +268,8 @@ namespace Globbing
                     var regex = GetRegex(pattern);
                     foreach (var file in EnumerateFilesMatchBase(_root, regex))
                     {
-                        if (dedup.Add(file)) yield return file;
+                        string res = FormatResult(file);
+                        if (dedup.Add(res)) yield return res;
                     }
                     continue;
                 }
@@ -227,9 +280,15 @@ namespace Globbing
 
                 foreach (var match in Walk(_root, segments, 0, seenDirs, directoryOnly))
                 {
-                    if (dedup.Add(match)) yield return match;
+                    string res = FormatResult(match);
+                    if (dedup.Add(res)) yield return res;
                 }
             }
+        }
+
+        private string FormatResult(string path)
+        {
+            return _options.Realpath ? PathUtils.TryGetRealPath(path) : PathUtils.ToOsPath(path);
         }
 
         private IEnumerable<string> EnumerateFilesMatchBase(string root, Regex basenameRegex)
@@ -254,7 +313,11 @@ namespace Globbing
                     if (!di.Exists) continue;
                     entries = di.EnumerateFileSystemInfos(); 
                 } 
-                catch { continue; }
+                catch 
+                {
+                    if (_options.ThrowOnError) throw;
+                    continue; 
+                }
 
                 foreach (var entry in entries)
                 {
@@ -298,7 +361,11 @@ namespace Globbing
                 if (!di.Exists) yield break;
                 entries = di.EnumerateFileSystemInfos(); 
             } 
-            catch { yield break; }
+            catch 
+            { 
+                if (_options.ThrowOnError) throw;
+                yield break; 
+            }
 
             if (index == segments.Length)
             {
@@ -469,6 +536,7 @@ namespace Globbing
                         var body = pattern.Substring(first + 1, i - first - 1);
                         var suffix = pattern[(i + 1)..];
                         var options = SplitOnTopLevelCommas(body);
+                        // If no commas, it's just a block {a} -> a (or we could recurse, but standard glob usually splits on commas)
                         if (options.Count == 1) { results.Add(UnescapeBraces(pattern)); return; }
                         foreach (var opt in options) Expand(prefix + opt + suffix, results);
                         return;
@@ -546,6 +614,7 @@ namespace Globbing
                 {
                     var segRegex = GlobMatcher.GlobSegmentToRegex(seg, caseSensitive, dotOption: false);
                     string s = segRegex.ToString();
+                    // strip ^ and $
                     sb.Append(s.Substring(1, s.Length - 2)); 
                 }
             }

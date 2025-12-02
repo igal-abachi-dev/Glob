@@ -62,6 +62,17 @@ var results = Glob.Match("**/*.{json,xml}", options);
 | `!` | **Negation**: Excludes matches (used in IgnorePatterns). | `!secret.txt` |
 | `/` | Path separators are normalized automatically. | `src/test/*.js` |
 
+
+### Missing features (compared to node-glob / glibc glob):
+
+extended globs: !(pattern), +(pattern), ?(pattern), @(pattern)
+
+POSIX classes in []: [:alnum:], [:digit:], etc.
+
+numeric brace ranges {1..5}, step ranges {1..10..2}
+
+tilde expansion (~user) / environment expansions
+
 ### Syntax Examples
 
 *   `**/*.cs` - Match all `.cs` files in the current directory and all subdirectories.
