@@ -106,6 +106,8 @@ The main entry point. Returns an `IEnumerable<string>` of matching paths.
 | `Dot` | `bool` | `false` | If true, `*` will match file names starting with `.` (e.g. `.gitignore`). |
 | `MatchBase` | `bool` | `false` | If true, a pattern without slashes (e.g. `*.js`) matches files in any subdirectory. |
 | `Realpath` | `bool` | `false` | If true, returns the absolute system path instead of the relative path. |
+| `ThrowOnError` | `bool` | `false` | If true, errors like UnauthorizedAccessException throws. else skipped. |
+
 
 ## Handling `**` (Globstar)
 
