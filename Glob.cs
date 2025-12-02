@@ -83,8 +83,8 @@ namespace Globbing
                     options.AllowNegation,
                     options.CaseSensitive);
 
+                //main logic:
                 var walker = new GlobWalker(walkRoot, new[] { relativePattern }, options, ignoreFilter);
-
                 foreach (var f in walker.Execute(originalHasSep))
                 {
                     yield return f;

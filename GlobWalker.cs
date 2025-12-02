@@ -60,6 +60,7 @@ internal class GlobWalker
             var segments = pattern.Split('/', StringSplitOptions.RemoveEmptyEntries);
             var seenDirs = new HashSet<string>(_options.CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase);
 
+            //main loop:
             foreach (var match in Walk(_root, segments, 0, seenDirs, directoryOnly))
             {
                 string res = FormatResult(match);
@@ -141,6 +142,8 @@ internal class GlobWalker
         {
             var di = new DirectoryInfo(dir);
             if (!di.Exists) yield break;
+
+            //dir found , can have entries
             entries = di.EnumerateFileSystemInfos();
         }
         catch
