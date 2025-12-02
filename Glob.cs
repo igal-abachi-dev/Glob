@@ -27,16 +27,16 @@ namespace Globbing
             foreach (var rawPat in rawPatterns)
             {
                 bool originalHasSep = rawPat.Contains('/') || rawPat.Contains('\\');
-                
+
                 // Normalize separators to '/' for internal processing
                 string normalizedPat = PathUtils.NormalizePath(rawPat);
 
                 // Split "Pattern Base" (string prefix) from "Walk Root" (FS location).
                 // This ensures patterns like "src/*.cs" respect options.BaseDirectory.
-                
+
                 // 1. Extract the static directory part from the pattern (e.g. "src/foo" from "src/foo/*.cs")
                 string patternBase = PathUtils.GetPatternDirectory(normalizedPat);
-                
+
                 // 2. Determine the actual absolute directory to start walking from
                 string walkRoot;
                 string osPatternBase = PathUtils.ToOsPath(patternBase);
@@ -63,7 +63,7 @@ namespace Globbing
                 if (!string.IsNullOrEmpty(patternBase) && patternBase != ".")
                 {
                     var comparison = options.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-                    
+
                     // Check exact match
                     if (normalizedPat.StartsWith(patternBase, comparison))
                     {
@@ -135,12 +135,12 @@ namespace Globbing
             if (IsUncPath(pattern))
             {
                 // Find the end of the share name
-                int shareEnd = pattern.IndexOf('/', 2); 
+                int shareEnd = pattern.IndexOf('/', 2);
                 if (shareEnd > -1)
                 {
                     int pathStart = pattern.IndexOf('/', shareEnd + 1);
                     if (pathStart == -1) return pattern; // The whole thing is the root
-                    
+
                     // Check for magic in the unc root? unlikely but strict check:
                     string root = pattern.Substring(0, pathStart);
                     if (!HasMagic(root)) return root;
@@ -194,9 +194,9 @@ namespace Globbing
 
         private static bool IsDriveRelative(string path)
         {
-            return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) 
-                   && path.Length >= 2 
-                   && path[1] == ':' 
+            return RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                   && path.Length >= 2
+                   && path[1] == ':'
                    && char.IsLetter(path[0]);
         }
 
@@ -300,23 +300,23 @@ namespace Globbing
             while (stack.Count > 0)
             {
                 var dir = stack.Pop();
-                
+
                 string checkDir = dir;
                 if (_options.FollowSymlinks) checkDir = PathUtils.TryGetRealPath(dir);
                 if (seen.Contains(checkDir)) continue;
                 seen.Add(checkDir);
 
                 IEnumerable<FileSystemInfo> entries;
-                try 
-                { 
+                try
+                {
                     var di = new DirectoryInfo(dir);
                     if (!di.Exists) continue;
-                    entries = di.EnumerateFileSystemInfos(); 
-                } 
-                catch 
+                    entries = di.EnumerateFileSystemInfos();
+                }
+                catch
                 {
                     if (_options.ThrowOnError) throw;
-                    continue; 
+                    continue;
                 }
 
                 foreach (var entry in entries)
@@ -332,7 +332,7 @@ namespace Globbing
                         if (!_options.FollowSymlinks && PathUtils.IsSymlink(entry)) continue;
 
                         stack.Push(entry.FullName);
-                        
+
                         if (_options.IncludeDirectories && basenameRegex.IsMatch(entry.Name))
                             yield return entry.FullName;
                     }
@@ -355,16 +355,16 @@ namespace Globbing
             }
 
             IEnumerable<FileSystemInfo> entries;
-            try 
-            { 
+            try
+            {
                 var di = new DirectoryInfo(dir);
                 if (!di.Exists) yield break;
-                entries = di.EnumerateFileSystemInfos(); 
-            } 
-            catch 
-            { 
+                entries = di.EnumerateFileSystemInfos();
+            }
+            catch
+            {
                 if (_options.ThrowOnError) throw;
-                yield break; 
+                yield break;
             }
 
             if (index == segments.Length)
@@ -392,7 +392,7 @@ namespace Globbing
                     bool isDir = (entry.Attributes & FileAttributes.Directory) == FileAttributes.Directory;
                     if (!isDir) continue;
                     if (!_options.FollowSymlinks && PathUtils.IsSymlink(entry)) continue;
-                    
+
                     if (!_options.Dot && entry.Name.StartsWith('.')) continue;
                     if (_ignore.IsIgnored(ToRelative(entry.FullName))) continue;
 
@@ -439,7 +439,7 @@ namespace Globbing
         public static Regex GlobSegmentToRegex(string segment, bool caseSensitive, bool dotOption = false)
         {
             if (segment == null) throw new ArgumentNullException(nameof(segment));
-            
+
             var pattern = new StringBuilder();
             pattern.Append('^');
 
@@ -450,7 +450,7 @@ namespace Globbing
             {
                 pattern.Append("(?![.])");
             }
-            
+
             int length = segment.Length;
             for (int i = 0; i < length; i++)
             {
@@ -466,23 +466,30 @@ namespace Globbing
                         if (negated) j++;
                         var classContent = new StringBuilder();
                         if (j < length && segment[j] == ']') { classContent.Append("\\]"); j++; }
-                        
-                        while (j < length && segment[j] != ']') {
+
+                        while (j < length && segment[j] != ']')
+                        {
                             char curr = segment[j];
                             // Correctly consume escaped characters inside classes
-                            if (curr == '\\') {
-                                if (j + 1 < length) {
+                            if (curr == '\\')
+                            {
+                                if (j + 1 < length)
+                                {
                                     j++;
                                     classContent.Append(Regex.Escape(segment[j].ToString()));
-                                } else {
+                                }
+                                else
+                                {
                                     classContent.Append("\\\\");
                                 }
                             }
                             // Handle ranges (e.g. a-z)
-                            else if (curr == '-' && classContent.Length > 0 && j + 1 < length && segment[j+1] != ']') {
+                            else if (curr == '-' && classContent.Length > 0 && j + 1 < length && segment[j + 1] != ']')
+                            {
                                 classContent.Append('-');
                             }
-                            else {
+                            else
+                            {
                                 classContent.Append(Regex.Escape(curr.ToString()));
                             }
                             j++;
@@ -505,7 +512,7 @@ namespace Globbing
                 }
             }
             pattern.Append('$');
-            
+
             var options = RegexOptions.CultureInvariant;
             if (!caseSensitive) options |= RegexOptions.IgnoreCase;
 
@@ -529,9 +536,11 @@ namespace Globbing
             {
                 if (pattern[i] == '\\') { if (i + 1 < pattern.Length) i++; continue; }
                 if (pattern[i] == '{') { if (level == 0) first = i; level++; }
-                else if (pattern[i] == '}') {
+                else if (pattern[i] == '}')
+                {
                     level--;
-                    if (level == 0 && first != -1) {
+                    if (level == 0 && first != -1)
+                    {
                         var prefix = pattern[..first];
                         var body = pattern.Substring(first + 1, i - first - 1);
                         var suffix = pattern[(i + 1)..];
@@ -546,16 +555,17 @@ namespace Globbing
             results.Add(UnescapeBraces(pattern));
         }
 
-        private static string UnescapeBraces(string str) => 
+        private static string UnescapeBraces(string str) =>
             str.Replace("\\{", "{").Replace("\\}", "}").Replace("\\,", ",");
 
         private static List<string> SplitOnTopLevelCommas(string input)
         {
             var result = new List<string>();
             int level = 0, last = 0;
-            for (int i = 0; i < input.Length; i++) {
+            for (int i = 0; i < input.Length; i++)
+            {
                 if (input[i] == '\\') { if (i + 1 < input.Length) i++; continue; }
-                if (input[i] == '{') level++; 
+                if (input[i] == '{') level++;
                 else if (input[i] == '}') level--;
                 else if (input[i] == ',' && level == 0) { result.Add(input[last..i]); last = i + 1; }
             }
@@ -574,7 +584,7 @@ namespace Globbing
             {
                 if (string.IsNullOrWhiteSpace(raw)) continue;
                 string pat = PathUtils.NormalizePath(raw.Trim());
-                
+
                 bool neg = allowNegation && pat.StartsWith('!');
                 if (neg) pat = pat[1..];
 
@@ -583,13 +593,13 @@ namespace Globbing
                 bool hasSep = pat.Contains('/');
                 // If it has a slash, it's a path pattern (anchored to root).
                 // If no slash, it's a name pattern (matches basename).
-                
+
                 Regex regex;
                 if (hasSep)
                     regex = BuildPathPatternRegex(pat, caseSensitive);
                 else
                     regex = GlobMatcher.GlobSegmentToRegex(pat, caseSensitive, dotOption: false);
-                
+
                 _matchers.Add((regex, neg, hasSep));
             }
         }
@@ -597,11 +607,11 @@ namespace Globbing
         private static Regex BuildPathPatternRegex(string pattern, bool caseSensitive)
         {
             var segments = pattern.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length == 0) return new Regex("$^"); 
-            
+            if (segments.Length == 0) return new Regex("$^");
+
             var sb = new StringBuilder();
             sb.Append('^');
-            
+
             bool endsWithSlash = pattern.EndsWith('/');
             bool endsWithGlobStar = pattern.EndsWith("/**");
 
@@ -609,13 +619,13 @@ namespace Globbing
             {
                 if (i > 0) sb.Append('/');
                 string seg = segments[i];
-                if (seg == "**") sb.Append(".*"); 
+                if (seg == "**") sb.Append(".*");
                 else
                 {
                     var segRegex = GlobMatcher.GlobSegmentToRegex(seg, caseSensitive, dotOption: false);
                     string s = segRegex.ToString();
                     // strip ^ and $
-                    sb.Append(s.Substring(1, s.Length - 2)); 
+                    sb.Append(s.Substring(1, s.Length - 2));
                 }
             }
 
@@ -637,7 +647,7 @@ namespace Globbing
         {
             if (string.IsNullOrEmpty(relativePath) || relativePath == ".") return false;
             if (relativePath.StartsWith("..")) return false;
-            
+
             if (_matchers.Count == 0) return false;
 
             string basename = relativePath;
