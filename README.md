@@ -10,7 +10,7 @@ This library provides a robust implementation of standard shell globbing pattern
 *   **Advanced Patterns:** Supports `**` (globstar), `?`, `*`, and character classes `[a-z]`.
 *   **Brace Expansion:** Supports nested brace expansion (e.g., `src/{api,client}/v{1,2}/*.cs`).
 *   **Negation:** Filter out results using `!` patterns (similar to `.gitignore`).
-*   **Performance:** uses `DirectoryInfo` and caching to avoid redundant disk calls and handle symlink loops.
+*   **Performance:** uses `DirectoryInfo` and caching to avoid redundant disk calls and handle symlink loops. , uses yield return lazy iterations
 *   **Zero Dependencies:** Single namespace, pure C#.
 
   
@@ -32,7 +32,6 @@ using Globbing;
 
 // 1. Basic Match
 var files = Glob.Match("src/**/*.cs");
-
 foreach (var file in files)
 {
     Console.WriteLine(file);
