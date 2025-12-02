@@ -12,7 +12,7 @@ This library provides a robust implementation of standard shell globbing pattern
 *   **Negation:** Filter out results using `!` patterns (similar to `.gitignore`).
 *   **Performance:** uses `DirectoryInfo` and caching to avoid redundant disk calls and handle symlink loops. , uses yield return lazy iterations
 *   **Zero Dependencies:** Single namespace, pure C#.
-
+*   **should Work Better** than Microsoft.Extensions.FileSystemGlobbing , its better implementation covers more edge cases and works like node glob
   
 ## Why Use This?
 
