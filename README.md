@@ -73,6 +73,10 @@ numeric brace ranges {1..5}, step ranges {1..10..2}
 
 tilde expansion (~user) / environment expansions
 
+glob walker recieves DefaultPatternProcessor : IPatternProcessor GetCompiledRegex() abstraction instead impl inside walker
+
+glob walker with cache: _regexCache 
+
 ### Syntax Examples
 
 *   `**/*.cs` - Match all `.cs` files in the current directory and all subdirectories.
