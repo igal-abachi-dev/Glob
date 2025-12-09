@@ -1,13 +1,31 @@
+using System;
 using System.IO;
-using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;//OS detection
 
 namespace Globbing;
 
 internal static class PathUtils
 {
-    public static string NormalizePath(string path)
+    public static string NormalizePath(string path, bool windowsPathsNoEscape = true)
     {
         if (string.IsNullOrEmpty(path)) return path;
+
+        // FIX: Preserve escape backslashes if user wants escape semantics (like node-glob)
+        // If WindowsPathsNoEscape is true (default), we treat '\' as separator -> '/'.
+        // If false, we leave '\' alone so it can act as an escape char.
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            if (windowsPathsNoEscape)
+                return path.Replace('\\', '/');
+           
+            // If we are allowing escapes, we only normalize if the user used '/'
+            // Users must use '/' as separators if they want to use '\' as escape.
+            return path;
+        }
+       
+        // On Linux/Mac, \ is a valid filename char, but usually treated as escape in globs.
+        // We generally assume forward slash input, but some might pass backslashes hoping for normalization.
+        // Standard glob behavior: always use / for separators.
         return path.Replace('\\', '/');
     }
 
@@ -29,7 +47,7 @@ internal static class PathUtils
             {
                 int pathStart = pattern.IndexOf('/', shareEnd + 1);
                 if (pathStart == -1) return pattern; // The whole thing is the root
-
+				
                 // Check for magic in the unc root? unlikely but strict check:
                 string root = pattern.Substring(0, pathStart);
                 if (!HasMagic(root)) return root;
@@ -101,14 +119,34 @@ internal static class PathUtils
 
     public static string TryGetRealPath(string path)
     {
+        // Simple full path, does not resolve symlinks
         try { return Path.GetFullPath(path); }
         catch { return path; }
+    }
+   
+    public static string ResolveSymlink(FileSystemInfo fileSystemInfo)
+    {
+#if NET6_0_OR_GREATER
+        try
+        {
+            // Resolves symlinks to their final target
+            var target = fileSystemInfo.ResolveLinkTarget(true);
+            return target != null ? target.FullName : fileSystemInfo.FullName;
+        }
+        catch
+        {
+            return fileSystemInfo.FullName;
+        }
+#else
+        // Fallback for older .NET: returning FullPath is the best we can do easily
+        return fileSystemInfo.FullName;
+#endif
     }
 
     public static bool IsSymlink(FileSystemInfo info)
     {
         if (info.LinkTarget != null) return true;
-        // Fallback for older frameworks or specific reparse points
+		// Fallback for older frameworks or specific reparse points
         return (info.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint;
     }
 }

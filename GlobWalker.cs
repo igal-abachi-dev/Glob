@@ -23,7 +23,7 @@ internal class GlobWalker
         var comparer = options.CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
         _regexCache = new Dictionary<string, Regex>(comparer);
     }
-
+	
     private Regex GetRegex(string pattern) //todo: IPatternProcessor GetCompiledRegex() abstraction instead impl here
     {
         if (_regexCache.TryGetValue(pattern, out var regex)) return regex;
@@ -34,11 +34,12 @@ internal class GlobWalker
 
     private string ToRelative(string fullPath)
     {
-        return PathUtils.NormalizePath(Path.GetRelativePath(_root, fullPath));
+        return PathUtils.NormalizePath(Path.GetRelativePath(_root, fullPath), _options.WindowsPathsNoEscape);
     }
 
-    public IEnumerable<string> Execute(bool originalHasSep)
+    public IEnumerable<string> Execute(bool originalHasSep, bool forceDirectoryOnly = false)
     {
+
         // Deduplicate results based on the final output format (OS Path or RealPath).
         // This prevents casing differences on Windows from returning duplicates.
         var dedup = new HashSet<string>(_options.CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase);
@@ -50,28 +51,41 @@ internal class GlobWalker
                 var regex = GetRegex(pattern);
                 foreach (var file in EnumerateFilesMatchBase(_root, regex))
                 {
-                    string res = FormatResult(file);
-                    if (dedup.Add(res)) yield return res;
+                    if (dedup.Add(file)) yield return file;
                 }
                 continue;
             }
 
-            bool directoryOnly = pattern.EndsWith('/');
+            bool directoryOnly = forceDirectoryOnly || pattern.EndsWith('/');
             var segments = pattern.Split('/', StringSplitOptions.RemoveEmptyEntries);
             var seenDirs = new HashSet<string>(_options.CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase);
 
             //main loop:
             foreach (var match in Walk(_root, segments, 0, seenDirs, directoryOnly))
             {
-                string res = FormatResult(match);
-                if (dedup.Add(res)) yield return res;
+                if (dedup.Add(match)) yield return match;
             }
         }
     }
 
-    private string FormatResult(string path)
+    // FIX: Updated to handle Absolute and Realpath correctly
+    public string FormatResult(FileSystemInfo entry)
     {
-        return _options.Realpath ? PathUtils.TryGetRealPath(path) : PathUtils.ToOsPath(path);
+        if (_options.Realpath)
+        {
+            return PathUtils.ResolveSymlink(entry);
+        }
+
+        if (_options.Absolute)
+        {
+            return entry.FullName;
+        }
+
+        // Return relative path
+        string rel = Path.GetRelativePath(_root, entry.FullName);
+        // Ensure standard separators for output if desired, or keep OS?
+        // Node glob usually returns forward slashes.
+        return PathUtils.NormalizePath(rel, _options.WindowsPathsNoEscape);
     }
 
     private IEnumerable<string> EnumerateFilesMatchBase(string root, Regex basenameRegex)
@@ -84,8 +98,10 @@ internal class GlobWalker
         {
             var dir = stack.Pop();
 
+            // FIX: Stronger cycle detection
             string checkDir = dir;
-            if (_options.FollowSymlinks) checkDir = PathUtils.TryGetRealPath(dir);
+            if (_options.FollowSymlinks) checkDir = PathUtils.ResolveSymlink(new DirectoryInfo(dir));
+           
             if (seen.Contains(checkDir)) continue;
             seen.Add(checkDir);
 
@@ -105,24 +121,28 @@ internal class GlobWalker
             foreach (var entry in entries)
             {
                 bool isDir = (entry.Attributes & FileAttributes.Directory) == FileAttributes.Directory;
+                bool isSym = PathUtils.IsSymlink(entry);
 
                 if (_ignore.IsIgnored(ToRelative(entry.FullName))) continue;
 
                 if (isDir)
                 {
-                    // Don't recurse into hidden directories if Dot is false
+                    // FIX: Don't recurse into hidden directories if Dot is false
                     if (!_options.Dot && entry.Name.StartsWith('.')) continue;
-                    if (!_options.FollowSymlinks && PathUtils.IsSymlink(entry)) continue;
+
+                    // FIX: Skip symlink directories only if FollowSymlinks == false
+                    // File symlinks are fine to list, but we don't recurse into dir symlinks.
+                    if (isSym && !_options.FollowSymlinks) continue;
 
                     stack.Push(entry.FullName);
 
                     if (_options.IncludeDirectories && basenameRegex.IsMatch(entry.Name))
-                        yield return entry.FullName;
+                        yield return FormatResult(entry);
                 }
                 else
                 {
                     if (basenameRegex.IsMatch(entry.Name))
-                        yield return entry.FullName;
+                        yield return FormatResult(entry);
                 }
             }
         }
@@ -130,20 +150,20 @@ internal class GlobWalker
 
     public IEnumerable<string> Walk(string dir, string[] segments, int index, HashSet<string> seenDirs, bool directoryOnly)
     {
-        if (_options.FollowSymlinks)
-        {
-            var realDir = PathUtils.TryGetRealPath(dir);
-            if (seenDirs.Contains(realDir)) yield break;
-            seenDirs.Add(realDir);
-        }
+        // Fix loop detection
+        string checkDir = dir;
+        if (_options.FollowSymlinks) checkDir = PathUtils.ResolveSymlink(new DirectoryInfo(dir));
+       
+        if (seenDirs.Contains(checkDir)) yield break;
+        seenDirs.Add(checkDir);
 
         IEnumerable<FileSystemInfo> entries;
         try
         {
             var di = new DirectoryInfo(dir);
             if (!di.Exists) yield break;
-
-            //dir found , can have entries
+			
+			//dir found, can have entries
             entries = di.EnumerateFileSystemInfos();
         }
         catch
@@ -157,7 +177,7 @@ internal class GlobWalker
             if (!_ignore.IsIgnored(ToRelative(dir)))
             {
                 if (directoryOnly || _options.IncludeDirectories)
-                    yield return dir;
+                    yield return FormatResult(new DirectoryInfo(dir));
             }
             yield break;
         }
@@ -175,8 +195,12 @@ internal class GlobWalker
             foreach (var entry in entries)
             {
                 bool isDir = (entry.Attributes & FileAttributes.Directory) == FileAttributes.Directory;
+                bool isSym = PathUtils.IsSymlink(entry);
+
                 if (!isDir) continue;
-                if (!_options.FollowSymlinks && PathUtils.IsSymlink(entry)) continue;
+
+                // FIX: Symlink recursion control
+                if (isSym && !_options.FollowSymlinks) continue;
 
                 if (!_options.Dot && entry.Name.StartsWith('.')) continue;
                 if (_ignore.IsIgnored(ToRelative(entry.FullName))) continue;
@@ -194,25 +218,31 @@ internal class GlobWalker
             if (_ignore.IsIgnored(ToRelative(entry.FullName))) continue;
 
             bool isDir = (entry.Attributes & FileAttributes.Directory) == FileAttributes.Directory;
+            bool isSym = PathUtils.IsSymlink(entry);
 
             if (!regex.IsMatch(entry.Name)) continue;
-            if (!_options.FollowSymlinks && PathUtils.IsSymlink(entry)) continue;
 
+            // FIX: Allow file symlinks even if !FollowSymlinks. Only block recursion.
+           
             if (isLast)
             {
                 if (directoryOnly)
                 {
-                    if (isDir) yield return entry.FullName;
+                    if (isDir) yield return FormatResult(entry);
                 }
                 else
                 {
+                    // Include files, and include directories if requested
                     if (!isDir || _options.IncludeDirectories)
-                        yield return entry.FullName;
+                        yield return FormatResult(entry);
                 }
             }
             else if (isDir)
             {
-                foreach (var match in Walk(entry.FullName, segments, index + 1, seenDirs, directoryOnly))
+                 // Recurse
+                 if (isSym && !_options.FollowSymlinks) continue;
+                 
+                 foreach (var match in Walk(entry.FullName, segments, index + 1, seenDirs, directoryOnly))
                     yield return match;
             }
         }
