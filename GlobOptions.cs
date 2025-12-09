@@ -3,7 +3,10 @@ using System.IO;
 using System.Runtime.InteropServices;
 
 namespace Globbing;
-
+/*
+better than Microsoft.Extensions.FileSystemGlobbing 
+because it handles node-glob specific expectations (like MatchBase, FollowSymlinks, and strict . handling) correctly.
+ */
 public class GlobOptions
 {
     public string BaseDirectory { get; set; } = Directory.GetCurrentDirectory();

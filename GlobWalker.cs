@@ -131,7 +131,12 @@ internal class GlobWalker
                 if (isDir)
                 {
                     // FIX: Don't recurse into hidden directories if Dot is false
-                    if (!_options.Dot && entry.Name.StartsWith('.')) continue;
+					// Only skip hidden files if they are directories we are recursing into, 
+					// OR if we are looking at a file and the regex doesn't account for it (which it does).
+					// Actually, since the Regex handles the exclusion via (?![.]), we only need to protect recursion.
+					if (!_options.Dot && entry.Name.StartsWith('.')) continue;
+					// Note: For files, let the basenameRegex fail if it doesn't match the dot.
+
 
                     // FIX: Skip symlink directories only if FollowSymlinks == false
                     // File symlinks are fine to list, but we don't recurse into dir symlinks.
