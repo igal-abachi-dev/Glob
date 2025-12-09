@@ -26,7 +26,7 @@ internal class GlobWalker
 	
     private Regex GetRegex(string pattern) //todo: IPatternProcessor GetCompiledRegex() abstraction instead impl here
     {
-        if (_regexCache.TryGetValue(pattern, out var regex)) return regex;
+        if (_regexCache.TryGetValue(pattern, out var regex)) return regex; //scope of the cache is per-walk , maybe could be larger scope
         regex = GlobMatcher.GlobSegmentToRegex(pattern, _options.CaseSensitive, _options.Dot);
         _regexCache[pattern] = regex;
         return regex;
