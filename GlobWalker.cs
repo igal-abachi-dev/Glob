@@ -34,9 +34,11 @@ internal class GlobWalker
 
     private string ToRelative(string fullPath)
     {
-        return PathUtils.NormalizePath(Path.GetRelativePath(_root, fullPath), _options.WindowsPathsNoEscape);
+        // FIX: Ignores must be checked relative to the BaseDirectory, 
+        // not the optimized walk root (e.g. if walking 'src/', ignore 'src/tmp' must match).
+        return PathUtils.NormalizePath(Path.GetRelativePath(_options.BaseDirectory, fullPath), _options.WindowsPathsNoEscape);
     }
-
+	
     public IEnumerable<string> Execute(bool originalHasSep, bool forceDirectoryOnly = false)
     {
 
@@ -67,7 +69,7 @@ internal class GlobWalker
             }
         }
     }
-
+	
     // FIX: Updated to handle Absolute and Realpath correctly
     public string FormatResult(FileSystemInfo entry)
     {
@@ -81,8 +83,9 @@ internal class GlobWalker
             return entry.FullName;
         }
 
-        // Return relative path
-        string rel = Path.GetRelativePath(_root, entry.FullName);
+        // FIX: Output paths should be relative to the user's BaseDirectory, 
+        // even if we optimized the walk to start deeper in the tree.
+        string rel = Path.GetRelativePath(_options.BaseDirectory, entry.FullName);
         // Ensure standard separators for output if desired, or keep OS?
         // Node glob usually returns forward slashes.
         return PathUtils.NormalizePath(rel, _options.WindowsPathsNoEscape);
