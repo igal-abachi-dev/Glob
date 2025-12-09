@@ -104,7 +104,7 @@ internal class GlobWalker
             // FIX: Stronger cycle detection
             string checkDir = dir;
             if (_options.FollowSymlinks) checkDir = PathUtils.ResolveSymlink(new DirectoryInfo(dir));
-           
+
             if (seen.Contains(checkDir)) continue;
             seen.Add(checkDir);
 
@@ -123,32 +123,41 @@ internal class GlobWalker
 
             foreach (var entry in entries)
             {
+                if (_ignore.IsIgnored(ToRelative(entry.FullName))) continue;
+
                 bool isDir = (entry.Attributes & FileAttributes.Directory) == FileAttributes.Directory;
                 bool isSym = PathUtils.IsSymlink(entry);
 
-                if (_ignore.IsIgnored(ToRelative(entry.FullName))) continue;
-
                 if (isDir)
                 {
+                    // 1. MATCH: Check if the directory itself matches the pattern.
+                    // Doing this BEFORE the 'continue' ensures we can find ".config" 
+                    // even if we aren't allowed to recurse into it.
+                    if (_options.IncludeDirectories && basenameRegex.IsMatch(entry.Name))
+                        yield return FormatResult(entry);
+
+                    // 2. RECURSE: Decide if we should walk into this directory.
+
+
                     // FIX: Don't recurse into hidden directories if Dot is false
-					// Only skip hidden files if they are directories we are recursing into, 
-					// OR if we are looking at a file and the regex doesn't account for it (which it does).
-					// Actually, since the Regex handles the exclusion via (?![.]), we only need to protect recursion.
-					if (!_options.Dot && entry.Name.StartsWith('.')) continue;
-					// Note: For files, let the basenameRegex fail if it doesn't match the dot.
+                    // Only skip hidden files if they are directories we are recursing into, 
+                    // OR if we are looking at a file and the regex doesn't account for it (which it does).
+                    // Actually, since the Regex handles the exclusion via (?![.]), we only need to protect recursion.
+                    // Rule A: Skip hidden directories if Dot is false.
+                    if (!_options.Dot && entry.Name.StartsWith('.')) continue;
 
 
                     // FIX: Skip symlink directories only if FollowSymlinks == false
                     // File symlinks are fine to list, but we don't recurse into dir symlinks.
+                    // Rule B: Skip symlink directories if FollowSymlinks is false.
                     if (isSym && !_options.FollowSymlinks) continue;
 
                     stack.Push(entry.FullName);
-
-                    if (_options.IncludeDirectories && basenameRegex.IsMatch(entry.Name))
-                        yield return FormatResult(entry);
                 }
                 else
                 {
+                    // File Logic
+                    // Note: For files, let the basenameRegex fail if it doesn't match the dot.
                     if (basenameRegex.IsMatch(entry.Name))
                         yield return FormatResult(entry);
                 }
